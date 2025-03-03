@@ -5,7 +5,6 @@ import cv2
 import numpy as np
 import base64
 import logging
-import requests
 from threading import Timer
 
 from flask import Flask, request, render_template, jsonify, redirect, url_for, flash
@@ -14,12 +13,12 @@ from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.utils import secure_filename
 
 # ---------------------------
-# Firebase Setup
+# Firebase Setup for Python
 # ---------------------------
 import firebase_admin
 from firebase_admin import credentials, storage
 
-# Load credentials from the FIREBASE_CREDENTIALS environment variable if present
+# Load Firebase credentials from environment variable (FIREBASE_CREDENTIALS contains the JSON string)
 firebase_creds_json = os.environ.get("FIREBASE_CREDENTIALS")
 if firebase_creds_json:
     try:
@@ -28,7 +27,7 @@ if firebase_creds_json:
     except Exception as e:
         raise Exception("Failed to load Firebase credentials from FIREBASE_CREDENTIALS") from e
 else:
-    # Fallback: try loading from a file path defined in GOOGLE_APPLICATION_CREDENTIALS
+    # Alternatively, load from a file if available
     cred_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
     if cred_path:
         cred = credentials.Certificate(cred_path)
@@ -48,28 +47,23 @@ bucket = storage.bucket()
 # ---------------------------
 app = Flask(__name__, template_folder='templates', static_folder='static')
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'fallback_secret_key_for_dev')
-app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10 MB
+# Maximum allowed file size (10 MB by default)
+app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  
 
 csrf = CSRFProtect(app)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Allowed file extensions
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
 def allowed_file(filename):
-    """Check if file has a valid extension."""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # ---------------------------
 # Helper Functions for Firebase
 # ---------------------------
 def upload_to_firebase(file_obj, destination_path):
-    """
-    Uploads the file object to Firebase Storage at the given destination path.
-    Returns the public URL of the uploaded file.
-    """
     blob = bucket.blob(destination_path)
     file_obj.seek(0)
     blob.upload_from_file(file_obj, content_type=file_obj.content_type)
@@ -77,10 +71,6 @@ def upload_to_firebase(file_obj, destination_path):
     return blob.public_url
 
 def poll_for_processed_image(destination_path, timeout=30, interval=2):
-    """
-    Polls Firebase Storage for a blob at destination_path.
-    Returns the public URL once found, or None after timeout.
-    """
     start_time = time.time()
     while time.time() - start_time < timeout:
         blob = bucket.blob(destination_path)
@@ -91,18 +81,12 @@ def poll_for_processed_image(destination_path, timeout=30, interval=2):
     return None
 
 def delete_from_firebase(destination_path):
-    """
-    Deletes a file from Firebase Storage at the given destination path.
-    """
     blob = bucket.blob(destination_path)
     if blob.exists():
         blob.delete()
         logger.info("Deleted file from storage: %s", destination_path)
 
 def schedule_delete(destination_path, delay=900):
-    """
-    Schedules deletion of a file from Firebase Storage after a delay (default 15 minutes).
-    """
     def delete_task():
         try:
             delete_from_firebase(destination_path)
@@ -111,9 +95,6 @@ def schedule_delete(destination_path, delay=900):
             logger.exception("Error deleting file %s", destination_path)
     Timer(delay, delete_task).start()
 
-# ---------------------------
-# Helper Function for Local Image Conversion
-# ---------------------------
 def image_to_base64(img, ext=".jpg"):
     success, buffer = cv2.imencode(ext, img)
     if not success:
@@ -132,11 +113,10 @@ def index():
 @app.route('/process', methods=['POST'])
 def process():
     """
-    Hybrid processing endpoint:
-    - Uploads 'sample' and 'user' images to Firebase Storage.
-    - Triggers a Firebase Cloud Function to process the images.
-    - Polls for the processed image.
-    - Schedules deletion of the processed image after 15 minutes.
+    Uploads 'sample' and 'user' images to Firebase Storage.
+    A Cloud Function (triggered by storage events) processes the 'user' image
+    and writes the output to the 'processed/' folder. This endpoint polls for the
+    processed file and returns its public URL.
     """
     try:
         sample_file = request.files.get('sample')
@@ -153,37 +133,23 @@ def process():
         sample_path = f"uploads/sample_{sample_filename}"
         user_path = f"uploads/user_{user_filename}"
 
-        # Upload the files
         sample_public_url = upload_to_firebase(sample_file, sample_path)
         user_public_url = upload_to_firebase(user_file, user_path)
-        logger.info("Uploaded images to Firebase: %s, %s", sample_public_url, user_public_url)
+        logger.info("Uploaded images: %s, %s", sample_public_url, user_public_url)
 
-        # Trigger Firebase Cloud Function
-        firebase_func_url = os.environ.get("FIREBASE_FUNCTION_URL")
-        if not firebase_func_url:
-            return jsonify({'error': 'Cloud function URL not configured.'}), 500
-
-        payload = {
-            "sample_path": sample_path,
-            "user_path": user_path
-        }
-        func_response = requests.post(firebase_func_url, json=payload)
-        if func_response.status_code != 200:
-            logger.error("Cloud function error: %s", func_response.text)
-            return jsonify({'error': 'Processing failed at cloud function.'}), 500
-
-        # Processed image expected to be stored at:
+        # Cloud Function triggered by file uploads will process the 'user' file.
+        # The processed file is expected at: processed/result_<user_filename>
         processed_path = f"processed/result_{user_filename}"
         logger.info("Waiting for processed image at: %s", processed_path)
         processed_public_url = poll_for_processed_image(processed_path)
         if not processed_public_url:
             return jsonify({'error': 'Processed image not found within timeout period.'}), 500
 
-        # Cleanup: Remove original uploads immediately
+        # Remove original uploads immediately.
         delete_from_firebase(sample_path)
         delete_from_firebase(user_path)
 
-        # Schedule deletion of the processed image after 15 minutes (900 seconds)
+        # Schedule deletion of the processed file after 15 minutes (900 seconds)
         schedule_delete(processed_path, delay=900)
 
         return jsonify({'result_img': processed_public_url})
@@ -255,10 +221,8 @@ def handle_file_too_large(error):
 # Utility: Color Blindness Simulation Function
 # ---------------------------
 def simulate_color_blindness(image, deficiency):
-    # Convert image to float [0,1] and then to RGB
     image_float = image.astype(np.float32) / 255.0
     image_rgb = cv2.cvtColor(image_float, cv2.COLOR_BGR2RGB)
-    
     if deficiency == "protanopia":
         M = np.array([[0.56667, 0.43333, 0],
                       [0.55833, 0.44167, 0],
@@ -271,7 +235,7 @@ def simulate_color_blindness(image, deficiency):
         M = np.array([[0.95,    0.05,   0],
                       [0,       0.43333, 0.56667],
                       [0,       0.475,   0.525]])
-    else:  # Normal or unrecognized deficiency
+    else:
         return image
     simulated = np.dot(image_rgb, M.T)
     simulated = np.clip(simulated, 0, 1)
@@ -280,5 +244,5 @@ def simulate_color_blindness(image, deficiency):
     return simulated_bgr
 
 if __name__ == '__main__':
-    # For local development; in production, use Gunicorn via your Procfile.
+    # For local development; in production, use Gunicorn via the Procfile.
     app.run(debug=False)
