@@ -1,4 +1,4 @@
-# Python cache and virtual environments
+# Python
 __pycache__/
 *.pyc
 *.pyo
@@ -8,11 +8,13 @@ venv/
 ENV/
 .venv/
 
-# Flask specific
-instance/
-.env
-*.env
+# Node modules in functions folder
+functions/node_modules/
 
-# OS generated files
+# Firebase local files
+.firebase/
+firebase-debug.log
+
+# OS files
 .DS_Store
 Thumbs.db
