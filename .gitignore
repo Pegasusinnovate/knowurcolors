@@ -1,0 +1,18 @@
+# Python cache and virtual environments
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+env/
+venv/
+ENV/
+.venv/
+
+# Flask specific
+instance/
+.env
+*.env
+
+# OS generated files
+.DS_Store
+Thumbs.db

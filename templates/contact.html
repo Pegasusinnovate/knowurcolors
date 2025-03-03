@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Contact KnowUrColors</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; background: #f7f7f7; color: #333; }
+    header, footer { text-align: center; }
+    main { max-width: 800px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 6px; }
+    a { color: #1976d2; text-decoration: none; }
+    form { margin-top: 20px; }
+    input, textarea { width: 100%; padding: 10px; margin-top: 10px; border: 1px solid #ccc; border-radius: 4px; }
+    button { margin-top: 10px; padding: 10px 20px; background: #1976d2; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+    button:hover { background: #1565c0; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Contact KnowUrColors</h1>
+  </header>
+  <main>
+    <p>If you have any questions, suggestions, or need support, please contact us using the form below or email us at <a href="mailto:support@knowurcolors.com">support@knowurcolors.com</a>.</p>
+    <form action="/contact_submit" method="post">
+      <!-- If using Flask-WTF, include the CSRF token here -->
+      <input type="text" name="name" placeholder="Your Name" required>
+      <input type="email" name="email" placeholder="Your Email" required>
+      <textarea name="message" rows="5" placeholder="Your Message" required></textarea>
+      <button type="submit">Send Message</button>
+    </form>
+    <p><a href="{{ url_for('index') }}">Return to Home</a></p>
+  </main>
+  <footer>
+    <p>&copy; 2025 KnowUrColors</p>
+  </footer>
+</body>
+</html>
