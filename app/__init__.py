@@ -18,3 +18,5 @@ def create_app():
     init_scheduler(app)
 
     return app
+
+app = create_app()
