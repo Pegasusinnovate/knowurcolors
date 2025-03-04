@@ -1,9 +1,16 @@
+import json
 import firebase_admin
 from firebase_admin import credentials, storage
 from config import Config
 
 try:
-    cred = credentials.Certificate(Config.FIREBASE_CREDENTIALS)
+    cred_input = Config.FIREBASE_CREDENTIALS
+    # If cred_input starts with '{', assume it's a JSON string.
+    if cred_input and cred_input.strip().startswith('{'):
+        cred_dict = json.loads(cred_input)
+        cred = credentials.Certificate(cred_dict)
+    else:
+        cred = credentials.Certificate(cred_input)
     firebase_admin.initialize_app(cred, {
         'storageBucket': Config.FIREBASE_STORAGE_BUCKET
     })
